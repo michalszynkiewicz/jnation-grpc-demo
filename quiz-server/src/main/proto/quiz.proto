@@ -9,29 +9,31 @@ import "google/protobuf/empty.proto";
 
 service QuizGrpcService {
   rpc SignUp(SignUpRequest) returns (SignUpResult);
-  rpc Answer(Solution) returns (SolutionResult);
-  rpc GetRiddles(google.protobuf.Empty) returns (stream Riddle);
+  rpc Answer(Solution) returns (Result);
+  rpc GetRiddles(google.protobuf.Empty) returns (stream Question);
   rpc WatchScore(google.protobuf.Empty) returns (stream Score);
+  rpc Start(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
 
-message SolutionResult {
-  enum Result {
+message Result {
+  enum Status {
     UNSPECIFIED = 0;
     OKAY = 1;
     WRONG = 2;
     TIMEOUT = 3;
     DUPLICATE_ANSWER = 4;
   }
-  Result result = 1;
+  Status status = 1;
 }
 
+message Score {
+  repeated UserScore scores = 1;
+}
 message UserScore {
   string user = 1;
   int32 points = 2;
 }
-message Score {
-  repeated UserScore scores = 1;
-}
+
 // alt+ctrl+shift+w to refresh
 message Solution {
   string token = 1;
@@ -39,7 +41,7 @@ message Solution {
   string solution = 3;
 }
 
-message Riddle {
+message Question {
   string text = 1;
   string riddle_id = 2;
   repeated string responses = 3;

@@ -1,7 +1,7 @@
 package org.acme;
 
 
-import org.acme.quiz.grpc.Riddle;
+import org.acme.quiz.grpc.Question;
 
 import javax.persistence.CollectionTable;
 import javax.persistence.ElementCollection;
@@ -12,7 +12,7 @@ import java.util.List;
 
 @Entity
 @Table(name = "riddles")
-public class RiddleEntity {
+public class Riddle {
     @Id
     public String id;
     public String question;
@@ -21,10 +21,20 @@ public class RiddleEntity {
     @CollectionTable(name = "riddle_answers")
     public List<String> answers;
 
-    public Riddle toGrpcRiddle() {
-        Riddle.Builder riddle = Riddle.newBuilder().setRiddleId(id)
+    public Question toGrpcQuestion() {
+        Question.Builder riddle = Question.newBuilder().setRiddleId(id)
                 .setText(question);
         riddle.addAllResponses(answers);
         return riddle.build();
+    }
+
+    @Override
+    public String toString() {
+        return "RiddleEntity{" +
+                "id='" + id + '\'' +
+                ", question='" + question + '\'' +
+                ", answer='" + answer + '\'' +
+                ", answers=" + answers +
+                '}';
     }
 }

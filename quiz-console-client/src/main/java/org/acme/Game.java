@@ -4,12 +4,12 @@ import com.google.protobuf.Empty;
 import io.quarkus.grpc.GrpcClient;
 import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
+import org.acme.quiz.grpc.Question;
 import org.acme.quiz.grpc.QuizGrpcService;
-import org.acme.quiz.grpc.Riddle;
+import org.acme.quiz.grpc.Result;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.acme.quiz.grpc.SignUpResult;
 import org.acme.quiz.grpc.Solution;
-import org.acme.quiz.grpc.SolutionResult;
 import org.acme.quiz.grpc.UserScore;
 
 import java.time.Duration;
@@ -23,7 +23,7 @@ public class Game implements QuarkusApplication {
     @GrpcClient
     QuizGrpcService quizClient;
 
-    volatile Riddle currentRiddle;
+    volatile Question currentQuestion;
 
     @Override
     public int run(String... args) {
@@ -37,7 +37,8 @@ public class Game implements QuarkusApplication {
         quizClient.getRiddles(Empty.getDefaultInstance())
                 .subscribe().with(riddle -> {
                     Console.cyan("Riddle: " + riddle.getText());
-                    currentRiddle = riddle;
+                    Console.cyan("Responses: " + String.join(", ", riddle.getResponsesList()));
+                    currentQuestion = riddle;
                 });
         quizClient.watchScore(Empty.getDefaultInstance())
                 .subscribe().with(result -> {
@@ -55,12 +56,12 @@ public class Game implements QuarkusApplication {
         while (true) {
             String resultStr = "";
             resultStr = System.console().readLine().trim();
-            SolutionResult result = quizClient.answer(
-                            Solution.newBuilder().setSolution(resultStr).setToken(token).setRiddleId(currentRiddle.getRiddleId()).build()
+            Result result = quizClient.answer(
+                            Solution.newBuilder().setSolution(resultStr).setToken(token).setRiddleId(currentQuestion.getRiddleId()).build()
                     )
                     .await().atMost(Duration.ofSeconds(5));
 
-            switch (result.getResult()) {
+            switch (result.getStatus()) {
                 case OKAY:
                     Console.green("Correct!");
                     Console.white("Please wait for another riddle");

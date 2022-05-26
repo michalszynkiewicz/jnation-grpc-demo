@@ -4,18 +4,16 @@ import com.google.protobuf.Empty;
 import io.quarkus.grpc.GrpcClient;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
 import org.acme.dto.JoinDto;
 import org.acme.dto.JoinResponseDto;
 import org.acme.dto.Question;
 import org.acme.dto.ResponseDto;
 import org.acme.dto.Score;
 import org.acme.quiz.grpc.QuizGrpcService;
-import org.acme.quiz.grpc.Riddle;
+import org.acme.quiz.grpc.Result;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.acme.quiz.grpc.SignUpResult;
 import org.acme.quiz.grpc.Solution;
-import org.acme.quiz.grpc.SolutionResult;
 
 import javax.enterprise.context.ApplicationScoped;
 import java.util.Comparator;
@@ -33,7 +31,7 @@ public class QuizService {
                 .map(this::grpcToDtoRiddle);
     }
 
-    private Question grpcToDtoRiddle(Riddle riddle) {
+    private Question grpcToDtoRiddle(org.acme.quiz.grpc.Question riddle) {
         Question question = new Question();
         question.riddleId = riddle.getRiddleId();
         question.text = riddle.getText();
@@ -47,9 +45,9 @@ public class QuizService {
                 .setRiddleId(response.riddleId)
                 .setToken(response.token)
                 .build();
-        return quizClient.answer(solution).map(SolutionResult::getResult)
-                .map(r -> r == SolutionResult.Result.OKAY ? org.acme.dto.SolutionResult.okay
-                        : r == SolutionResult.Result.TIMEOUT ? org.acme.dto.SolutionResult.timeout : org.acme.dto.SolutionResult.wrong);
+        return quizClient.answer(solution).map(Result::getStatus)
+                .map(r -> r == Result.Status.OKAY ? org.acme.dto.SolutionResult.okay
+                        : r == Result.Status.TIMEOUT ? org.acme.dto.SolutionResult.timeout : org.acme.dto.SolutionResult.wrong);
     }
 
     public Uni<JoinResponseDto> join(JoinDto joinDto) {
