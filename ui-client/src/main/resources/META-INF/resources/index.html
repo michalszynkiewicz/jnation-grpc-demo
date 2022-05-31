@@ -45,7 +45,7 @@
                 switch (result.result) {
                     case 'OKAY':
                         document.getElementById('error').classList.add("visually-hidden");
-                        localStorage.setItem('token', result.token);
+                        localStorage.setItem('user', result.user);
                         document.location = "/play.html"
                         break;
                     case 'NAME_ALREADY_USED':

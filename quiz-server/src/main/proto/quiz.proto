@@ -7,55 +7,57 @@ option java_multiple_files = true;
 
 import "google/protobuf/empty.proto";
 
-service QuizGrpcService {
-  rpc SignUp(SignUpRequest) returns (SignUpResult);
-  rpc Answer(Solution) returns (Result);
-  rpc GetRiddles(google.protobuf.Empty) returns (stream Question);
-  rpc WatchScore(google.protobuf.Empty) returns (stream Score);
+service Quiz {
+  rpc GetQuestions(google.protobuf.Empty) returns (stream Question);
   rpc Start(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+  rpc Respond(Answer) returns (Response);
+
+  rpc SignUp(SignUpRequest) returns (SignUpResponse);
+
+  rpc WatchScore(google.protobuf.Empty) returns (stream Results);
 }
 
-message Result {
-  enum Status {
-    UNSPECIFIED = 0;
-    OKAY = 1;
-    WRONG = 2;
-    TIMEOUT = 3;
-    DUPLICATE_ANSWER = 4;
-  }
-  Status status = 1;
+message Results {
+  repeated UserResult results = 1;
 }
 
-message Score {
-  repeated UserScore scores = 1;
-}
-message UserScore {
+message UserResult {
   string user = 1;
   int32 points = 2;
 }
 
-// alt+ctrl+shift+w to refresh
-message Solution {
-  string token = 1;
-  string riddle_id = 2;
-  string solution = 3;
-}
-
 message Question {
   string text = 1;
-  string riddle_id = 2;
-  repeated string responses = 3;
+  repeated string answers = 2;
 }
 
-message SignUpRequest {
+message Answer {
+  string text = 1;
+  string user = 2;
+  string question = 3;
+}
+
+message Response {
+  enum Status {
+    UNDEFINED = 0;
+    WRONG = 1;
+    CORRECT = 2;
+    DUPLICATE_ANSWER = 3;
+    TIMEOUT = 4;
+  }
+  Status status = 1;
+}
+
+message SignUpRequest{
   string name = 1;
 }
 
-message SignUpResult {
-  enum Result {
-    OKAY = 0;
-    NAME_ALREADY_USED = 1;
+message SignUpResponse {
+  enum Status {
+    UNDEFINED = 0;
+    OKAY = 1;
+    NAME_TAKEN = 2;
   }
-  Result result = 1;
-  string token = 2;
+  Status status = 1;
 }

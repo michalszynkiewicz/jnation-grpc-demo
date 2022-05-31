@@ -4,13 +4,13 @@ import com.google.protobuf.Empty;
 import io.quarkus.grpc.GrpcClient;
 import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
+import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Question;
-import org.acme.quiz.grpc.QuizGrpcService;
-import org.acme.quiz.grpc.Result;
+import org.acme.quiz.grpc.Quiz;
+import org.acme.quiz.grpc.Response;
 import org.acme.quiz.grpc.SignUpRequest;
-import org.acme.quiz.grpc.SignUpResult;
-import org.acme.quiz.grpc.Solution;
-import org.acme.quiz.grpc.UserScore;
+import org.acme.quiz.grpc.SignUpResponse;
+import org.acme.quiz.grpc.UserResult;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -20,8 +20,10 @@ import java.util.List;
 @QuarkusMain
 public class Game implements QuarkusApplication {
 
+    private String userName;
+
     @GrpcClient
-    QuizGrpcService quizClient;
+    Quiz quizClient;
 
     volatile Question currentQuestion;
 
@@ -32,21 +34,22 @@ public class Game implements QuarkusApplication {
             return 1;
         }
 
-        String token = signUp(args[0]);
+        userName = args[0];
+        signUp(userName);
 
-        quizClient.getRiddles(Empty.getDefaultInstance())
+        quizClient.getQuestions(Empty.getDefaultInstance())
                 .subscribe().with(riddle -> {
                     Console.cyan("Riddle: " + riddle.getText());
-                    Console.cyan("Responses: " + String.join(", ", riddle.getResponsesList()));
+                    Console.cyan("Responses: " + String.join(", ", riddle.getAnswersList()));
                     currentQuestion = riddle;
                 });
         quizClient.watchScore(Empty.getDefaultInstance())
                 .subscribe().with(result -> {
-                    List<UserScore> results = new ArrayList<>(result.getScoresList());
-                    results.sort(Comparator.comparing(UserScore::getPoints));
+                    List<UserResult> results = new ArrayList<>(result.getResultsList());
+                    results.sort(Comparator.comparing(UserResult::getPoints));
                     Console.white("Results: ");
                     Console.white("======");
-                    for (UserScore userScore : results) {
+                    for (UserResult userScore : results) {
                         Console.white("%s: %s", userScore.getUser(), userScore.getPoints());
                     }
                     Console.white("======");
@@ -56,13 +59,14 @@ public class Game implements QuarkusApplication {
         while (true) {
             String resultStr = "";
             resultStr = System.console().readLine().trim();
-            Result result = quizClient.answer(
-                            Solution.newBuilder().setSolution(resultStr).setToken(token).setRiddleId(currentQuestion.getRiddleId()).build()
+            System.out.println("answering to " + currentQuestion.getAnswersList() + "; " + currentQuestion.getText());
+            Response response = quizClient.respond(
+                            Answer.newBuilder().setText(resultStr).setUser(userName).setQuestion(currentQuestion.getText()).build()
                     )
                     .await().atMost(Duration.ofSeconds(5));
 
-            switch (result.getStatus()) {
-                case OKAY:
+            switch (response.getStatus()) {
+                case CORRECT:
                     Console.green("Correct!");
                     Console.white("Please wait for another riddle");
                     break;
@@ -81,13 +85,13 @@ public class Game implements QuarkusApplication {
         }
     }
 
-    private String signUp(String name) {
-        SignUpResult signUpResult = quizClient.signUp(SignUpRequest.newBuilder().setName(name).build())
+    private void signUp(String name) {
+        SignUpResponse signUpResult = quizClient.signUp(SignUpRequest.newBuilder().setName(name).build())
                 .await().atMost(Duration.ofSeconds(20));
-        switch (signUpResult.getResult()) {
+        switch (signUpResult.getStatus()) {
             case OKAY:
-                return signUpResult.getToken();
-            case NAME_ALREADY_USED:
+                break;
+            case NAME_TAKEN:
                 throw new RuntimeException("Name already used, please use a different one");
             default:
                 throw new RuntimeException("Undefined problem");

@@ -2,147 +2,107 @@ package org.acme;
 
 import com.google.protobuf.Empty;
 import io.quarkus.grpc.GrpcService;
-import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
-import io.vertx.mutiny.core.Vertx;
+import io.vertx.core.Vertx;
+import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Question;
-import org.acme.quiz.grpc.QuizGrpcService;
-import org.acme.quiz.grpc.Result;
-import org.acme.quiz.grpc.Score;
+import org.acme.quiz.grpc.Quiz;
+import org.acme.quiz.grpc.Response;
+import org.acme.quiz.grpc.Results;
 import org.acme.quiz.grpc.SignUpRequest;
-import org.acme.quiz.grpc.SignUpResult;
-import org.acme.quiz.grpc.Solution;
-import org.acme.quiz.grpc.UserScore;
-import org.apache.commons.lang3.RandomStringUtils;
-import org.hibernate.reactive.mutiny.Mutiny;
+import org.acme.quiz.grpc.SignUpResponse;
+import org.acme.quiz.grpc.UserResult;
 
 import javax.inject.Inject;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
 @GrpcService
-public class QuizService implements QuizGrpcService {
-    public static final long TIME_TO_ANSWER = 10_000L;
-    private final Map<String, String> userTokens = new ConcurrentHashMap<>();
-    private final Map<String, String> usersByToken = new ConcurrentHashMap<>();
-    private final Set<String> usersWithResponse = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    private final Map<String, AtomicInteger> userScores = new ConcurrentHashMap<>();
-    private final BroadcastProcessor<Question> riddleBroadcast = BroadcastProcessor.create();
-    private final BroadcastProcessor<Score> scoreBroadcast = BroadcastProcessor.create();
-    private final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
+public class QuizService implements Quiz {
+
+    final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
+    final BroadcastProcessor<Question> questionBroadcast = BroadcastProcessor.create();
+    final BroadcastProcessor<Results> scoresBroadcast = BroadcastProcessor.create();
+
+    final Map<String, Integer> pointsByUser = new ConcurrentHashMap<>();
+    final Set<String> usersWithResponses = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     @Inject
-    Mutiny.SessionFactory sessionFactory;
+    RiddleStorage riddleStorage;
 
     @Inject
     Vertx vertx;
 
-    private void sendNextRiddle(int riddleIdx) {
-        if (riddleIdx > 0) {
-            sessionFactory.openStatelessSession()
-                    .onItem().transformToUni(
-                            session ->
-                                    session.createNativeQuery(
-                                                    "select * from riddles order by id limit 1 offset ?1", Riddle.class)
-                                            .setParameter(1, riddleIdx - 1)
-                                            .getSingleResult()
-                                            .onItem().transformToUni(r -> session.fetch(r.answers).replaceWith(r))
-                                            .onItem().transformToUni(r -> session.close().replaceWith(r))
-                    ).onItem().invoke(currentRiddle::set)
-                    .onItem().transform(Riddle::toGrpcQuestion)
-                    .onItem().invoke(riddleBroadcast::onNext)
-                    .onItem().invoke(this::broadcastScores)
-                    .onItem().invoke(usersWithResponse::clear)
-                    .subscribe().with(whatever ->
-                            vertx.setTimer(TIME_TO_ANSWER, ignored -> sendNextRiddle(riddleIdx - 1))
-                    );
-        } else {
-            broadcastScores();
-            riddleBroadcast.onNext(Question.newBuilder().setText("That's it, thanks for playing!").build());
-        }
-
-    }
-
-    private void broadcastScores() {
-        Score.Builder scoreBuilder = Score.newBuilder();
-        List<UserScore> userScores = this.userScores.entrySet().stream().map(
-                entry ->
-                        UserScore.newBuilder()
-                                .setUser(entry.getKey())
-                                .setPoints(entry.getValue().get())
-                                .build()
-        ).collect(Collectors.toList());
-        scoreBuilder.addAllScores(userScores);
-        scoreBroadcast.onNext(scoreBuilder.build());
-    }
-
-    private Uni<Integer> countRiddles(Mutiny.StatelessSession session) {
-        return session.createQuery("select count(*) from Riddle ", Long.class)
-                .getSingleResult().map(Long::intValue);
+    @Override
+    public Multi<Question> getQuestions(Empty request) {
+        return questionBroadcast;
     }
 
     @Override
-    public Uni<SignUpResult> signUp(SignUpRequest request) {
-        String token = RandomStringUtils.randomAlphanumeric(10);
-        String name = request.getName();
-        if (userTokens.putIfAbsent(name, token) != null) {
-            return Uni.createFrom().item(
-                    SignUpResult.newBuilder().setResult(SignUpResult.Result.NAME_ALREADY_USED).build()
-            );
-        }
-        usersByToken.put(token, name);
-        userScores.put(name, new AtomicInteger(0));
-        return Uni.createFrom().item(SignUpResult.newBuilder().setResult(SignUpResult.Result.OKAY).setToken(token).build());
+    public Multi<Results> watchScore(Empty request) {
+        return scoresBroadcast;
     }
 
     @Override
     public Uni<Empty> start(Empty request) {
-        sessionFactory.openStatelessSession()
-                .onItem().transformToUni(this::countRiddles)
-                .subscribe().with(cnt -> sendNextRiddle(cnt));
+        broadcastQuestions(0);
         return Uni.createFrom().item(Empty.getDefaultInstance());
     }
 
     @Override
-    public Uni<Result> answer(Solution request) {
-        Result.Builder result = Result.newBuilder();
-        Riddle currentRiddle = this.currentRiddle.get();
-
-        if (!usersWithResponse.add(request.getToken())) {
-            result.setStatus(Result.Status.DUPLICATE_ANSWER);
-        } else if (request.getRiddleId().equals(currentRiddle.id)) {
-            if (request.getSolution().equals(currentRiddle.answer)) {
-                String userName = usersByToken.get(request.getToken());
-                userScores.get(userName).incrementAndGet();
-                result.setStatus(Result.Status.OKAY);
-            } else {
-                result.setStatus(Result.Status.WRONG);
-            }
+    public Uni<Response> respond(Answer request) {
+        Response.Builder response = Response.newBuilder();
+        if (!request.getQuestion().equals(currentRiddle.get().text)) {
+            response.setStatus(Response.Status.TIMEOUT);
+        } else if (!usersWithResponses.add(request.getUser())) {
+            response.setStatus(Response.Status.DUPLICATE_ANSWER);
+        } else if (currentRiddle.get().answer.equals(request.getText())) {
+            response.setStatus(Response.Status.CORRECT);
+            pointsByUser.put(request.getUser(), pointsByUser.get(request.getUser()) + 1);
         } else {
-            result.setStatus(Result.Status.TIMEOUT);
+            response.setStatus(Response.Status.WRONG);
         }
-        return Uni.createFrom().item(result.build());
+        return Uni.createFrom().item(response.build());
     }
 
     @Override
-    public Multi<Question> getRiddles(Empty request) {
-        if (currentRiddle.get() != null) {
-            return Multi.createBy().merging().streams(Multi.createFrom().item(currentRiddle.get().toGrpcQuestion()), riddleBroadcast);
+    public Uni<SignUpResponse> signUp(SignUpRequest request) {
+        String name = request.getName();
+        SignUpResponse.Status status;
+        if (pointsByUser.containsKey(name)) {
+            status = SignUpResponse.Status.NAME_TAKEN;
         } else {
-            return riddleBroadcast;
+            pointsByUser.put(name, 0);
+            status = SignUpResponse.Status.OKAY;
+        }
+        return Uni.createFrom()
+                .item(SignUpResponse.newBuilder().setStatus(status).build());
+    }
+
+    private void broadcastQuestions(int i) {
+        Riddle riddle = riddleStorage.getRiddle(i);
+        if (riddle != null) {
+            sendQuestion(riddle);
+            vertx.setTimer(5000L, ignored -> broadcastQuestions(i + 1));
+        } else {
+            sendQuestion(new Riddle("Thanks for playing!", ""));
         }
     }
 
-    @Override
-    public Multi<Score> watchScore(Empty request) {
-        return scoreBroadcast;
+    private void sendQuestion(Riddle riddle) {
+        currentRiddle.set(riddle);
+        questionBroadcast.onNext(riddle.toQuestion());
+        usersWithResponses.clear();
+
+        Results.Builder results = Results.newBuilder();
+        pointsByUser.forEach(
+                (name, points) -> results.addResults(UserResult.newBuilder().setUser(name).setPoints(points).build())
+        );
+        scoresBroadcast.onNext(results.build());
     }
 }

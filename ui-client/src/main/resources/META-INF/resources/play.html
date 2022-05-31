@@ -34,7 +34,7 @@
         crossorigin="anonymous"></script>
 <script>
     let riddle;
-    let token = localStorage.getItem('token');
+    let user = localStorage.getItem('user');
     let answerList = document.getElementById('answer-list');
     let results = document.getElementById('results');
 
@@ -86,9 +86,9 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    "riddleId" : riddle.riddleId,
+                    "question" : riddle.text,
                     "answer": answer,
-                    "token": token
+                    "user": user
                 })
             })
             .then(response => response.json())

@@ -1,40 +1,31 @@
 package org.acme;
 
-
 import org.acme.quiz.grpc.Question;
 
-import javax.persistence.CollectionTable;
-import javax.persistence.ElementCollection;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-@Entity
-@Table(name = "riddles")
 public class Riddle {
-    @Id
-    public String id;
-    public String question;
+    public String text;
     public String answer;
-    @ElementCollection
-    @CollectionTable(name = "riddle_answers")
-    public List<String> answers;
+    public List<String> options;
 
-    public Question toGrpcQuestion() {
-        Question.Builder riddle = Question.newBuilder().setRiddleId(id)
-                .setText(question);
-        riddle.addAllResponses(answers);
-        return riddle.build();
+    public Riddle(String text, String answer, String... otherOptions) {
+        this.text = text;
+        this.answer = answer;
+        this.options = new ArrayList<>();
+        options.addAll(Arrays.asList(otherOptions));
+        options.add(answer);
     }
 
-    @Override
-    public String toString() {
-        return "RiddleEntity{" +
-                "id='" + id + '\'' +
-                ", question='" + question + '\'' +
-                ", answer='" + answer + '\'' +
-                ", answers=" + answers +
-                '}';
+    public Question toQuestion() {
+        List<String> answers = new ArrayList<>(options);
+        answers.sort(String::compareTo);
+
+        return Question.newBuilder()
+                .setText(text)
+                .addAllAnswers(answers)
+                .build();
     }
 }
