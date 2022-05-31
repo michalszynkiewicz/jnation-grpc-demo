@@ -11,7 +11,7 @@ import org.acme.dto.ResponseDto;
 import org.acme.dto.Score;
 import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Quiz;
-import org.acme.quiz.grpc.Response;
+import org.acme.quiz.grpc.Result;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.acme.quiz.grpc.SignUpResponse;
 
@@ -44,9 +44,9 @@ public class QuizService {
                 .setQuestion(response.question)
                 .setUser(response.user)
                 .build();
-        return quizClient.respond(solution).map(Response::getStatus)
-                .map(r -> r == Response.Status.CORRECT ? org.acme.dto.SolutionResult.okay
-                        : r == Response.Status.TIMEOUT ? org.acme.dto.SolutionResult.timeout : org.acme.dto.SolutionResult.wrong);
+        return quizClient.respond(solution).map(Result::getStatus)
+                .map(r -> r == Result.Status.CORRECT ? org.acme.dto.SolutionResult.okay
+                        : r == Result.Status.TIMEOUT ? org.acme.dto.SolutionResult.timeout : org.acme.dto.SolutionResult.wrong);
     }
 
     public Uni<JoinResponseDto> join(JoinDto joinDto) {

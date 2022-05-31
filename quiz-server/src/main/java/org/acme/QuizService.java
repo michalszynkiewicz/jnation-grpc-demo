@@ -9,11 +9,11 @@ import io.vertx.core.Vertx;
 import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Question;
 import org.acme.quiz.grpc.Quiz;
-import org.acme.quiz.grpc.Response;
-import org.acme.quiz.grpc.Results;
+import org.acme.quiz.grpc.Result;
+import org.acme.quiz.grpc.Scores;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.acme.quiz.grpc.SignUpResponse;
-import org.acme.quiz.grpc.UserResult;
+import org.acme.quiz.grpc.UserScore;
 
 import javax.inject.Inject;
 import java.util.Collections;
@@ -27,7 +27,7 @@ public class QuizService implements Quiz {
 
     final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
     final BroadcastProcessor<Question> questionBroadcast = BroadcastProcessor.create();
-    final BroadcastProcessor<Results> scoresBroadcast = BroadcastProcessor.create();
+    final BroadcastProcessor<Scores> scoresBroadcast = BroadcastProcessor.create();
 
     final Map<String, Integer> pointsByUser = new ConcurrentHashMap<>();
     final Set<String> usersWithResponses = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -44,7 +44,7 @@ public class QuizService implements Quiz {
     }
 
     @Override
-    public Multi<Results> watchScore(Empty request) {
+    public Multi<Scores> watchScore(Empty request) {
         return scoresBroadcast;
     }
 
@@ -55,17 +55,17 @@ public class QuizService implements Quiz {
     }
 
     @Override
-    public Uni<Response> respond(Answer request) {
-        Response.Builder response = Response.newBuilder();
+    public Uni<Result> respond(Answer request) {
+        Result.Builder response = Result.newBuilder();
         if (!request.getQuestion().equals(currentRiddle.get().text)) {
-            response.setStatus(Response.Status.TIMEOUT);
+            response.setStatus(Result.Status.TIMEOUT);
         } else if (!usersWithResponses.add(request.getUser())) {
-            response.setStatus(Response.Status.DUPLICATE_ANSWER);
+            response.setStatus(Result.Status.DUPLICATE_ANSWER);
         } else if (currentRiddle.get().answer.equals(request.getText())) {
-            response.setStatus(Response.Status.CORRECT);
+            response.setStatus(Result.Status.CORRECT);
             pointsByUser.put(request.getUser(), pointsByUser.get(request.getUser()) + 1);
         } else {
-            response.setStatus(Response.Status.WRONG);
+            response.setStatus(Result.Status.WRONG);
         }
         return Uni.createFrom().item(response.build());
     }
@@ -99,9 +99,9 @@ public class QuizService implements Quiz {
         questionBroadcast.onNext(riddle.toQuestion());
         usersWithResponses.clear();
 
-        Results.Builder results = Results.newBuilder();
+        Scores.Builder results = Scores.newBuilder();
         pointsByUser.forEach(
-                (name, points) -> results.addResults(UserResult.newBuilder().setUser(name).setPoints(points).build())
+                (name, points) -> results.addResults(UserScore.newBuilder().setUser(name).setPoints(points).build())
         );
         scoresBroadcast.onNext(results.build());
     }

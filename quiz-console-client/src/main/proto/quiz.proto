@@ -10,18 +10,18 @@ import "google/protobuf/empty.proto";
 service Quiz {
   rpc GetQuestions(google.protobuf.Empty) returns (stream Question);
 
-  rpc Respond(Answer) returns (Response);
+  rpc Respond(Answer) returns (Result);
 
   rpc SignUp(SignUpRequest) returns (SignUpResponse);
 
-  rpc WatchScore(google.protobuf.Empty) returns (stream Results);
+  rpc WatchScore(google.protobuf.Empty) returns (stream Scores);
 }
 
-message Results {
-  repeated UserResult results = 1;
+message Scores {
+  repeated UserScore results = 1;
 }
 
-message UserResult {
+message UserScore {
   string user = 1;
   int32 points = 2;
 }
@@ -37,7 +37,7 @@ message Answer {
   string question = 3;
 }
 
-message Response {
+message Result {
   enum Status {
     UNDEFINED = 0;
     WRONG = 1;

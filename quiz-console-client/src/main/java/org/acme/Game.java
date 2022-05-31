@@ -7,10 +7,10 @@ import io.quarkus.runtime.annotations.QuarkusMain;
 import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Question;
 import org.acme.quiz.grpc.Quiz;
-import org.acme.quiz.grpc.Response;
+import org.acme.quiz.grpc.Result;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.acme.quiz.grpc.SignUpResponse;
-import org.acme.quiz.grpc.UserResult;
+import org.acme.quiz.grpc.UserScore;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -19,8 +19,6 @@ import java.util.List;
 
 @QuarkusMain
 public class Game implements QuarkusApplication {
-
-    private String userName;
 
     @GrpcClient
     Quiz quizClient;
@@ -34,7 +32,7 @@ public class Game implements QuarkusApplication {
             return 1;
         }
 
-        userName = args[0];
+        String userName = args[0];
         signUp(userName);
 
         quizClient.getQuestions(Empty.getDefaultInstance())
@@ -45,11 +43,11 @@ public class Game implements QuarkusApplication {
                 });
         quizClient.watchScore(Empty.getDefaultInstance())
                 .subscribe().with(result -> {
-                    List<UserResult> results = new ArrayList<>(result.getResultsList());
-                    results.sort(Comparator.comparing(UserResult::getPoints));
+                    List<UserScore> results = new ArrayList<>(result.getResultsList());
+                    results.sort(Comparator.comparing(UserScore::getPoints));
                     Console.white("Results: ");
                     Console.white("======");
-                    for (UserResult userScore : results) {
+                    for (UserScore userScore : results) {
                         Console.white("%s: %s", userScore.getUser(), userScore.getPoints());
                     }
                     Console.white("======");
@@ -57,10 +55,9 @@ public class Game implements QuarkusApplication {
                 });
 
         while (true) {
-            String resultStr = "";
-            resultStr = System.console().readLine().trim();
+            String resultStr = System.console().readLine().trim();
             System.out.println("answering to " + currentQuestion.getAnswersList() + "; " + currentQuestion.getText());
-            Response response = quizClient.respond(
+            Result response = quizClient.respond(
                             Answer.newBuilder().setText(resultStr).setUser(userName).setQuestion(currentQuestion.getText()).build()
                     )
                     .await().atMost(Duration.ofSeconds(5));
