@@ -1,5 +1,6 @@
 package org.acme;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -42,8 +43,8 @@ public class QuizService implements Quiz {
     private final Map<String, Integer> userScores = new ConcurrentHashMap<>();
     private final Set<String> usersWithResponse = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
-    @ConfigProperty(name = "quiz.delay", defaultValue = "10000")
-    long delay;
+    @ConfigProperty(name = "quiz.delay", defaultValue = "10s")
+    Duration delay;
 
     @Inject
     RiddleStorage riddleStorage;
@@ -114,7 +115,7 @@ public class QuizService implements Quiz {
             Log.infof("Next question is: %s", riddle.text);
             questionUnicast.onNext(riddle.toQuestion());
             currentRiddle.set(riddle);
-            vertx.setTimer(delay, ignored -> broadcastQuestion(i + 1));
+            vertx.setTimer(delay.toMillis(), ignored -> broadcastQuestion(i + 1));
         } else {
             currentRiddle.set(null);
             Log.info("Quiz completed...");
