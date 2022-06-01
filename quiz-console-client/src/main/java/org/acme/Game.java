@@ -1,10 +1,10 @@
 package org.acme;
 
-import com.google.protobuf.Empty;
 import io.quarkus.grpc.GrpcClient;
 import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
 import org.acme.quiz.grpc.Answer;
+import org.acme.quiz.grpc.Empty;
 import org.acme.quiz.grpc.Question;
 import org.acme.quiz.grpc.Quiz;
 import org.acme.quiz.grpc.Result;

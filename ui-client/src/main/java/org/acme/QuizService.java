@@ -1,6 +1,5 @@
 package org.acme;
 
-import com.google.protobuf.Empty;
 import io.quarkus.grpc.GrpcClient;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
@@ -10,6 +9,7 @@ import org.acme.dto.Question;
 import org.acme.dto.ResponseDto;
 import org.acme.dto.Score;
 import org.acme.quiz.grpc.Answer;
+import org.acme.quiz.grpc.Empty;
 import org.acme.quiz.grpc.Quiz;
 import org.acme.quiz.grpc.Result;
 import org.acme.quiz.grpc.SignUpRequest;

@@ -1,6 +1,5 @@
 package org.acme;
 
-import com.google.protobuf.Empty;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
@@ -8,6 +7,7 @@ import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
 import io.smallrye.mutiny.operators.multi.processors.UnicastProcessor;
 import io.vertx.core.Vertx;
 import org.acme.quiz.grpc.Answer;
+import org.acme.quiz.grpc.Empty;
 import org.acme.quiz.grpc.Question;
 import org.acme.quiz.grpc.Quiz;
 import org.acme.quiz.grpc.Result;
@@ -105,5 +105,7 @@ public class QuizService implements Quiz {
                         scores.addResults(UserScore.newBuilder().setUser(user).setPoints(score).build())
         );
         scoresBroadcast.onNext(scores.build());
+
+        usersWithResponse.clear();
     }
 }
