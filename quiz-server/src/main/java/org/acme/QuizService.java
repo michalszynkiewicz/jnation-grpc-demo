@@ -1,12 +1,13 @@
 package org.acme;
 
-import com.google.protobuf.Empty;
-import io.quarkus.grpc.GrpcService;
-import io.smallrye.mutiny.Multi;
-import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
-import io.smallrye.mutiny.operators.multi.processors.UnicastProcessor;
-import io.vertx.core.Vertx;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.inject.Inject;
+
 import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Question;
 import org.acme.quiz.grpc.Quiz;
@@ -15,21 +16,20 @@ import org.acme.quiz.grpc.Scores;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.acme.quiz.grpc.SignUpResponse;
 import org.acme.quiz.grpc.UserScore;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import javax.inject.Inject;
+import com.google.protobuf.Empty;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
+import io.quarkus.grpc.GrpcService;
+import io.smallrye.mutiny.Multi;
+import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
+import io.smallrye.mutiny.operators.multi.processors.UnicastProcessor;
+import io.vertx.core.Vertx;
 
 @GrpcService
 public class QuizService implements Quiz {
 
-    // TODO make it configurable?
-    private static final long DELAY = 10_000L;
-    
     private final UnicastProcessor<Question> questionUnicast = UnicastProcessor.create();
     private final BroadcastProcessor<Scores> scoresBroadcast = BroadcastProcessor.create();
     private final Multi<Question> questionBroadcast = Multi.createBy().replaying().upTo(1)
@@ -41,6 +41,9 @@ public class QuizService implements Quiz {
     private final Map<String, Integer> userScores = new ConcurrentHashMap<>();
     private final Set<String> usersWithResponse = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
+    @ConfigProperty(name = "quiz.delay", defaultValue = "10000")
+    long delay;
+
     @Inject
     RiddleStorage riddleStorage;
 
@@ -49,7 +52,9 @@ public class QuizService implements Quiz {
 
     @Override
     public Uni<Empty> start(Empty request) {
-        broadcastQuestion(0);
+        if (currentRiddle.get() == null) {
+            broadcastQuestion(0);
+        }
         return Uni.createFrom().item(Empty.getDefaultInstance());
     }
 
@@ -102,7 +107,7 @@ public class QuizService implements Quiz {
         if (riddle != null) {
             questionUnicast.onNext(riddle.toQuestion());
             currentRiddle.set(riddle);
-            vertx.setTimer(DELAY, ignored -> broadcastQuestion(i + 1));
+            vertx.setTimer(delay, ignored -> broadcastQuestion(i + 1));
         } else {
             currentRiddle.set(null);
             questionUnicast.onNext(Question.newBuilder().setText("That's all, thanks for playing!").build());
