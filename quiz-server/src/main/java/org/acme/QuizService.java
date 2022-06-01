@@ -21,6 +21,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import com.google.protobuf.Empty;
 
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
@@ -53,6 +54,7 @@ public class QuizService implements Quiz {
     @Override
     public Uni<Empty> start(Empty request) {
         if (currentRiddle.get() == null) {
+            Log.info("Starting the quiz!");
             broadcastQuestion(0);
         }
         return Uni.createFrom().item(Empty.getDefaultInstance());
@@ -67,14 +69,17 @@ public class QuizService implements Quiz {
             if (userScores.computeIfPresent(answer.getUser(), (key, value) -> value + 1) != null) {
                 if (usersWithResponse.add(answer.getUser())) {
                     result.setStatus(Result.Status.CORRECT);
+                    Log.infof("User %s - correct answer!", answer.getUser());
                 } else {
                     result.setStatus(Result.Status.DUPLICATE_ANSWER);
+                    Log.infof("User %s - duplicate answer!", answer.getUser());
                 }
             } else {
                 result.setStatus(Result.Status.UNKNOWN_USER);
             }
         } else {
             result.setStatus(Result.Status.WRONG);
+            Log.infof("User %s - wrong answer!", answer.getUser());
         }
         return Uni.createFrom().item(result.build());
     }
@@ -85,6 +90,7 @@ public class QuizService implements Quiz {
         if (userScores.putIfAbsent(request.getName(), 0) != null) {
             status = SignUpResponse.Status.NAME_TAKEN;
         } else {
+            Log.infof("User %s signed up", request.getName());
             status = SignUpResponse.Status.OKAY;
         }
         return Uni.createFrom().item(SignUpResponse.newBuilder().setStatus(status).build());
@@ -105,11 +111,13 @@ public class QuizService implements Quiz {
 
         Riddle riddle = riddleStorage.getRiddle(i);
         if (riddle != null) {
+            Log.infof("Next question is: %s", riddle.text);
             questionUnicast.onNext(riddle.toQuestion());
             currentRiddle.set(riddle);
             vertx.setTimer(delay, ignored -> broadcastQuestion(i + 1));
         } else {
             currentRiddle.set(null);
+            Log.info("Quiz completed...");
             questionUnicast.onNext(Question.newBuilder().setText("That's all, thanks for playing!").build());
         }
 
