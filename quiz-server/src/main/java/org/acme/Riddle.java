@@ -1,31 +1,30 @@
 package org.acme;
 
-import org.acme.quiz.grpc.Question;
-
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
+import org.acme.quiz.grpc.Question;
+
 public class Riddle {
-    public String text;
-    public String answer;
-    public List<String> options;
+
+    public final String text;
+    public final String answer;
+    public final List<String> options;
 
     public Riddle(String text, String answer, String... otherOptions) {
         this.text = text;
         this.answer = answer;
         this.options = new ArrayList<>();
-        options.addAll(Arrays.asList(otherOptions));
+        Collections.addAll(options, otherOptions);
         options.add(answer);
+        options.sort(String::compareTo);
     }
 
     public Question toQuestion() {
-        List<String> answers = new ArrayList<>(options);
-        answers.sort(String::compareTo);
-
         return Question.newBuilder()
                 .setText(text)
-                .addAllAnswers(answers)
+                .addAllAnswers(options)
                 .build();
     }
 }
