@@ -17,6 +17,7 @@ import org.acme.quiz.grpc.SignUpResponse;
 import org.acme.quiz.grpc.UserScore;
 
 import javax.inject.Inject;
+
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -26,13 +27,14 @@ import java.util.concurrent.atomic.AtomicReference;
 @GrpcService
 public class QuizService implements Quiz {
 
+    // TODO make it configurable?
     private static final long DELAY = 10_000L;
+    
     private final UnicastProcessor<Question> questionUnicast = UnicastProcessor.create();
     private final BroadcastProcessor<Scores> scoresBroadcast = BroadcastProcessor.create();
-    private final Multi<Question> questionBroadcast =
-            Multi.createBy().replaying().upTo(1)
-                    .ofMulti(questionUnicast)
-                    .broadcast().toAllSubscribers();
+    private final Multi<Question> questionBroadcast = Multi.createBy().replaying().upTo(1)
+            .ofMulti(questionUnicast)
+            .broadcast().toAllSubscribers();
 
     private final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
 
@@ -56,11 +58,16 @@ public class QuizService implements Quiz {
         Result.Builder result = Result.newBuilder();
         if (currentRiddle.get() == null || !currentRiddle.get().text.equals(answer.getQuestion())) {
             result.setStatus(Result.Status.TIMEOUT);
-        } else if (!usersWithResponse.add(answer.getUser())) {
-            result.setStatus(Result.Status.DUPLICATE_ANSWER);
         } else if (currentRiddle.get().answer.equals(answer.getText())) {
-            userScores.put(answer.getUser(), userScores.get(answer.getUser()) + 1);
-            result.setStatus(Result.Status.CORRECT);
+            if (userScores.computeIfPresent(answer.getUser(), (key, value) -> value + 1) != null) {
+                if (usersWithResponse.add(answer.getUser())) {
+                    result.setStatus(Result.Status.CORRECT);
+                } else {
+                    result.setStatus(Result.Status.DUPLICATE_ANSWER);
+                }
+            } else {
+                result.setStatus(Result.Status.UNKNOWN_USER);
+            }
         } else {
             result.setStatus(Result.Status.WRONG);
         }
@@ -69,7 +76,7 @@ public class QuizService implements Quiz {
 
     @Override
     public Uni<SignUpResponse> signUp(SignUpRequest request) {
-            SignUpResponse.Status status;
+        SignUpResponse.Status status;
         if (userScores.putIfAbsent(request.getName(), 0) != null) {
             status = SignUpResponse.Status.NAME_TAKEN;
         } else {
@@ -89,6 +96,8 @@ public class QuizService implements Quiz {
     }
 
     private void broadcastQuestion(int i) {
+        usersWithResponse.clear();
+
         Riddle riddle = riddleStorage.getRiddle(i);
         if (riddle != null) {
             questionUnicast.onNext(riddle.toQuestion());
@@ -101,9 +110,7 @@ public class QuizService implements Quiz {
 
         Scores.Builder scores = Scores.newBuilder();
         userScores.forEach(
-                (user, score) ->
-                        scores.addResults(UserScore.newBuilder().setUser(user).setPoints(score).build())
-        );
+                (user, score) -> scores.addResults(UserScore.newBuilder().setUser(user).setPoints(score).build()));
         scoresBroadcast.onNext(scores.build());
     }
 }
