@@ -5,6 +5,7 @@ import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
+import io.smallrye.mutiny.operators.multi.processors.UnicastProcessor;
 import io.vertx.core.Vertx;
 import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Question;
@@ -25,18 +26,57 @@ import java.util.concurrent.atomic.AtomicReference;
 @GrpcService
 public class QuizService implements Quiz {
 
-    final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
-    final BroadcastProcessor<Question> questionBroadcast = BroadcastProcessor.create();
-    final BroadcastProcessor<Scores> scoresBroadcast = BroadcastProcessor.create();
+    private static final long DELAY = 10_000L;
+    private final UnicastProcessor<Question> questionUnicast = UnicastProcessor.create();
+    private final BroadcastProcessor<Scores> scoresBroadcast = BroadcastProcessor.create();
+    private final Multi<Question> questionBroadcast =
+            Multi.createBy().replaying().upTo(1)
+                    .ofMulti(questionUnicast)
+                    .broadcast().toAllSubscribers();
 
-    final Map<String, Integer> pointsByUser = new ConcurrentHashMap<>();
-    final Set<String> usersWithResponses = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
+
+    private final Map<String, Integer> userScores = new ConcurrentHashMap<>();
+    private final Set<String> usersWithResponse = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     @Inject
     RiddleStorage riddleStorage;
 
     @Inject
     Vertx vertx;
+
+    @Override
+    public Uni<Empty> start(Empty request) {
+        broadcastQuestion(0);
+        return Uni.createFrom().item(Empty.getDefaultInstance());
+    }
+
+    @Override
+    public Uni<Result> respond(Answer answer) {
+        Result.Builder result = Result.newBuilder();
+        if (currentRiddle.get() == null || !currentRiddle.get().text.equals(answer.getQuestion())) {
+            result.setStatus(Result.Status.TIMEOUT);
+        } else if (!usersWithResponse.add(answer.getUser())) {
+            result.setStatus(Result.Status.DUPLICATE_ANSWER);
+        } else if (currentRiddle.get().answer.equals(answer.getText())) {
+            userScores.put(answer.getUser(), userScores.get(answer.getUser()) + 1);
+            result.setStatus(Result.Status.CORRECT);
+        } else {
+            result.setStatus(Result.Status.WRONG);
+        }
+        return Uni.createFrom().item(result.build());
+    }
+
+    @Override
+    public Uni<SignUpResponse> signUp(SignUpRequest request) {
+            SignUpResponse.Status status;
+        if (userScores.putIfAbsent(request.getName(), 0) != null) {
+            status = SignUpResponse.Status.NAME_TAKEN;
+        } else {
+            status = SignUpResponse.Status.OKAY;
+        }
+        return Uni.createFrom().item(SignUpResponse.newBuilder().setStatus(status).build());
+    }
 
     @Override
     public Multi<Question> getQuestions(Empty request) {
@@ -48,61 +88,22 @@ public class QuizService implements Quiz {
         return scoresBroadcast;
     }
 
-    @Override
-    public Uni<Empty> start(Empty request) {
-        broadcastQuestions(0);
-        return Uni.createFrom().item(Empty.getDefaultInstance());
-    }
-
-    @Override
-    public Uni<Result> respond(Answer request) {
-        Result.Builder response = Result.newBuilder();
-        if (!request.getQuestion().equals(currentRiddle.get().text)) {
-            response.setStatus(Result.Status.TIMEOUT);
-        } else if (!usersWithResponses.add(request.getUser())) {
-            response.setStatus(Result.Status.DUPLICATE_ANSWER);
-        } else if (currentRiddle.get().answer.equals(request.getText())) {
-            response.setStatus(Result.Status.CORRECT);
-            pointsByUser.put(request.getUser(), pointsByUser.get(request.getUser()) + 1);
-        } else {
-            response.setStatus(Result.Status.WRONG);
-        }
-        return Uni.createFrom().item(response.build());
-    }
-
-    @Override
-    public Uni<SignUpResponse> signUp(SignUpRequest request) {
-        String name = request.getName();
-        SignUpResponse.Status status;
-        if (pointsByUser.containsKey(name)) {
-            status = SignUpResponse.Status.NAME_TAKEN;
-        } else {
-            pointsByUser.put(name, 0);
-            status = SignUpResponse.Status.OKAY;
-        }
-        return Uni.createFrom()
-                .item(SignUpResponse.newBuilder().setStatus(status).build());
-    }
-
-    private void broadcastQuestions(int i) {
+    private void broadcastQuestion(int i) {
         Riddle riddle = riddleStorage.getRiddle(i);
         if (riddle != null) {
-            sendQuestion(riddle);
-            vertx.setTimer(5000L, ignored -> broadcastQuestions(i + 1));
+            questionUnicast.onNext(riddle.toQuestion());
+            currentRiddle.set(riddle);
+            vertx.setTimer(DELAY, ignored -> broadcastQuestion(i + 1));
         } else {
-            sendQuestion(new Riddle("Thanks for playing!", ""));
+            currentRiddle.set(null);
+            questionUnicast.onNext(Question.newBuilder().setText("That's all, thanks for playing!").build());
         }
-    }
 
-    private void sendQuestion(Riddle riddle) {
-        currentRiddle.set(riddle);
-        questionBroadcast.onNext(riddle.toQuestion());
-        usersWithResponses.clear();
-
-        Scores.Builder results = Scores.newBuilder();
-        pointsByUser.forEach(
-                (name, points) -> results.addResults(UserScore.newBuilder().setUser(name).setPoints(points).build())
+        Scores.Builder scores = Scores.newBuilder();
+        userScores.forEach(
+                (user, score) ->
+                        scores.addResults(UserScore.newBuilder().setUser(user).setPoints(score).build())
         );
-        scoresBroadcast.onNext(results.build());
+        scoresBroadcast.onNext(scores.build());
     }
 }

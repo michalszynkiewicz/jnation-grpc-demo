@@ -18,7 +18,4 @@ public class RiddleStorage {
         return riddleNumber < riddles.size() ? riddles.get(riddleNumber) : null;
     }
 
-    public int riddleCount() {
-        return riddles.size();
-    }
 }
