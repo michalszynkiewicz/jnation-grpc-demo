@@ -3,7 +3,7 @@ package org.acme;
 import org.acme.quiz.grpc.Question;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 public class Riddle {
@@ -15,17 +15,15 @@ public class Riddle {
         this.text = text;
         this.answer = answer;
         this.options = new ArrayList<>();
-        options.addAll(Arrays.asList(otherOptions));
+        Collections.addAll(options, otherOptions);
         options.add(answer);
+        options.sort(String::compareTo);
     }
 
     public Question toQuestion() {
-        List<String> answers = new ArrayList<>(options);
-        answers.sort(String::compareTo);
-
         return Question.newBuilder()
                 .setText(text)
-                .addAllAnswers(answers)
+                .addAllAnswers(options)
                 .build();
     }
 }

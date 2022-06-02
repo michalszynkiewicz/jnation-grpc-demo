@@ -1,6 +1,7 @@
 package org.acme;
 
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
@@ -15,8 +16,10 @@ import org.acme.quiz.grpc.Scores;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.acme.quiz.grpc.SignUpResponse;
 import org.acme.quiz.grpc.UserScore;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import javax.inject.Inject;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -26,7 +29,9 @@ import java.util.concurrent.atomic.AtomicReference;
 @GrpcService
 public class QuizService implements Quiz {
 
-    private static final long DELAY = 10_000L;
+    @ConfigProperty(name = "quiz.delay", defaultValue = "10s")
+    Duration delay;
+
     private final UnicastProcessor<Question> questionUnicast = UnicastProcessor.create();
     private final BroadcastProcessor<Scores> scoresBroadcast = BroadcastProcessor.create();
     private final Multi<Question> questionBroadcast =
@@ -56,13 +61,21 @@ public class QuizService implements Quiz {
         Result.Builder result = Result.newBuilder();
         if (currentRiddle.get() == null || !currentRiddle.get().text.equals(answer.getQuestion())) {
             result.setStatus(Result.Status.TIMEOUT);
-        } else if (!usersWithResponse.add(answer.getUser())) {
-            result.setStatus(Result.Status.DUPLICATE_ANSWER);
         } else if (currentRiddle.get().answer.equals(answer.getText())) {
-            userScores.put(answer.getUser(), userScores.get(answer.getUser()) + 1);
-            result.setStatus(Result.Status.CORRECT);
+            if (userScores.computeIfPresent(answer.getUser(), (key, value) -> value + 1) != null) {
+                if (usersWithResponse.add(answer.getUser())) {
+                    result.setStatus(Result.Status.CORRECT);
+                    Log.infof("User %s - correct answer!", answer.getUser());
+                } else {
+                    result.setStatus(Result.Status.DUPLICATE_ANSWER);
+                    Log.infof("User %s - duplicate answer!", answer.getUser());
+                }
+            } else {
+                result.setStatus(Result.Status.UNKNOWN_USER);
+            }
         } else {
             result.setStatus(Result.Status.WRONG);
+            Log.infof("User %s - wrong answer!", answer.getUser());
         }
         return Uni.createFrom().item(result.build());
     }
@@ -93,7 +106,7 @@ public class QuizService implements Quiz {
         if (riddle != null) {
             questionUnicast.onNext(riddle.toQuestion());
             currentRiddle.set(riddle);
-            vertx.setTimer(DELAY, ignored -> broadcastQuestion(i + 1));
+            vertx.setTimer(delay.toMillis(), ignored -> broadcastQuestion(i + 1));
         } else {
             currentRiddle.set(null);
             questionUnicast.onNext(Question.newBuilder().setText("That's all, thanks for playing!").build());
