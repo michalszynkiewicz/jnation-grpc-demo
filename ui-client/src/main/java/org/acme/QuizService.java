@@ -71,6 +71,7 @@ public class QuizService {
                         score ->
                                 score.getResultsList().stream().map(us -> new Score(us.getUser(), us.getPoints()))
                                         .sorted(Comparator.comparing(s -> s.score, Comparator.reverseOrder()))
+                                        .limit(20)
                                         .collect(Collectors.toList())
                 );
     }
