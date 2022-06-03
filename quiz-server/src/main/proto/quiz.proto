@@ -3,11 +3,8 @@ syntax = "proto3";
 option java_package = "org.acme.quiz.grpc";
 option java_multiple_files = true;
 
-
 service Quiz {
   rpc GetQuestions(Empty) returns (stream Question);
-  rpc Start(Empty) returns (Empty);
-
   rpc Respond(Answer) returns (Result);
 
   rpc SignUp(SignUpRequest) returns (SignUpResponse);
@@ -51,7 +48,6 @@ message Result {
     CORRECT = 2;
     DUPLICATE_ANSWER = 3;
     TIMEOUT = 4;
-    UNKNOWN_USER = 5;
   }
   Status status = 1;
 }

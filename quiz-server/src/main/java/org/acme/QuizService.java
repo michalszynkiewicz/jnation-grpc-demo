@@ -1,12 +1,10 @@
 package org.acme;
 
 import io.quarkus.grpc.GrpcService;
-import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
 import io.smallrye.mutiny.operators.multi.processors.UnicastProcessor;
-import io.vertx.core.Vertx;
 import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Empty;
 import org.acme.quiz.grpc.Question;
@@ -16,10 +14,7 @@ import org.acme.quiz.grpc.Scores;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.acme.quiz.grpc.SignUpResponse;
 import org.acme.quiz.grpc.UserScore;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import javax.inject.Inject;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -29,61 +24,44 @@ import java.util.concurrent.atomic.AtomicReference;
 @GrpcService
 public class QuizService implements Quiz {
 
-    @ConfigProperty(name = "quiz.delay", defaultValue = "10s")
-    Duration delay;
-
-    private final UnicastProcessor<Question> questionUnicast = UnicastProcessor.create();
-    private final BroadcastProcessor<Scores> scoresBroadcast = BroadcastProcessor.create();
-    private final Multi<Question> questionBroadcast =
-            Multi.createBy().replaying().upTo(1)
-                    .ofMulti(questionUnicast)
-                    .broadcast().toAllSubscribers();
-
     private final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
 
-    private final Map<String, Integer> userScores = new ConcurrentHashMap<>();
-    private final Set<String> usersWithResponse = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final UnicastProcessor<Question> questionBroadcast = UnicastProcessor.create();
+    private final Multi<Question> questions =
+            Multi.createBy().replaying().upTo(1).ofMulti(questionBroadcast)
+                    .broadcast().toAllSubscribers();
 
-    @Inject
-    RiddleStorage riddleStorage;
+    private final BroadcastProcessor<Scores> scoreBroadcast = BroadcastProcessor.create();
 
-    @Inject
-    Vertx vertx;
-
-    @Override
-    public Uni<Empty> start(Empty request) {
-        broadcastQuestion(0);
-        return Uni.createFrom().item(Empty.getDefaultInstance());
-    }
+    private final Map<String, Integer> pointsByUser = new ConcurrentHashMap<>();
+    private final Set<String> usersWithAnswer = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     @Override
-    public Uni<Result> respond(Answer answer) {
-        Result.Builder result = Result.newBuilder();
-        if (currentRiddle.get() == null || !currentRiddle.get().text.equals(answer.getQuestion())) {
-            result.setStatus(Result.Status.TIMEOUT);
-        } else if (currentRiddle.get().answer.equals(answer.getText())) {
-            if (userScores.computeIfPresent(answer.getUser(), (key, value) -> value + 1) != null) {
-                if (usersWithResponse.add(answer.getUser())) {
-                    result.setStatus(Result.Status.CORRECT);
-                    Log.infof("User %s - correct answer!", answer.getUser());
-                } else {
-                    result.setStatus(Result.Status.DUPLICATE_ANSWER);
-                    Log.infof("User %s - duplicate answer!", answer.getUser());
-                }
-            } else {
-                result.setStatus(Result.Status.UNKNOWN_USER);
-            }
+    public Uni<Result> respond(Answer request) {
+        Riddle riddle = currentRiddle.get();
+        Result.Status status;
+        if (riddle == null || !riddle.text.equals(request.getQuestion())) {
+            status = Result.Status.TIMEOUT;
         } else {
-            result.setStatus(Result.Status.WRONG);
-            Log.infof("User %s - wrong answer!", answer.getUser());
+            String user = request.getUser();
+            if (!usersWithAnswer.add(user)) {
+                status = Result.Status.DUPLICATE_ANSWER;
+            } else if (!riddle.answer.equals(request.getText())) {
+                status = Result.Status.WRONG;
+            } else {
+                status = Result.Status.CORRECT;
+                pointsByUser.put(user, pointsByUser.get(user) + 1);
+            }
         }
-        return Uni.createFrom().item(result.build());
+        return Uni.createFrom().item(
+                Result.newBuilder().setStatus(status).build()
+        );
     }
 
     @Override
     public Uni<SignUpResponse> signUp(SignUpRequest request) {
-            SignUpResponse.Status status;
-        if (userScores.putIfAbsent(request.getName(), 0) != null) {
+        SignUpResponse.Status status;
+        if (pointsByUser.putIfAbsent(request.getName(), 0) != null) {
             status = SignUpResponse.Status.NAME_TAKEN;
         } else {
             status = SignUpResponse.Status.OKAY;
@@ -92,33 +70,32 @@ public class QuizService implements Quiz {
     }
 
     @Override
-    public Multi<Question> getQuestions(Empty request) {
-        return questionBroadcast;
+    public Multi<Scores> watchScore(Empty request) {
+        return scoreBroadcast;
     }
 
     @Override
-    public Multi<Scores> watchScore(Empty request) {
-        return scoresBroadcast;
+    public Multi<Question> getQuestions(Empty request) {
+        return questions;
     }
 
-    private void broadcastQuestion(int i) {
-        Riddle riddle = riddleStorage.getRiddle(i);
-        if (riddle != null) {
-            questionUnicast.onNext(riddle.toQuestion());
-            currentRiddle.set(riddle);
-            vertx.setTimer(delay.toMillis(), ignored -> broadcastQuestion(i + 1));
-        } else {
-            currentRiddle.set(null);
-            questionUnicast.onNext(Question.newBuilder().setText("That's all, thanks for playing!").build());
-        }
+    public void broadcastQuestion(Riddle riddle) {
+        questionBroadcast.onNext(riddle.toQuestion());
+        currentRiddle.set(riddle);
+        broadcastResults();
+        usersWithAnswer.clear();
+    }
 
+    public void endQuiz() {
+        questionBroadcast.onNext(Question.newBuilder().setText("That's all, thanks for playing!").build());
+        currentRiddle.set(null);
+        broadcastResults();
+    }
+
+    private void broadcastResults() {
         Scores.Builder scores = Scores.newBuilder();
-        userScores.forEach(
-                (user, score) ->
-                        scores.addResults(UserScore.newBuilder().setUser(user).setPoints(score).build())
-        );
-        scoresBroadcast.onNext(scores.build());
-
-        usersWithResponse.clear();
+        pointsByUser.forEach((user, points) ->
+                scores.addResults(UserScore.newBuilder().setUser(user).setPoints(points).build()));
+        scoreBroadcast.onNext(scores.build());
     }
 }
