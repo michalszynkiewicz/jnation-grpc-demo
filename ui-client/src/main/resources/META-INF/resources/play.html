@@ -56,7 +56,6 @@
             console.log("adding html: ", html);
             answerList.innerHTML = html;
         }
-        questionSource.onerror = () => questionSource.close();
 
         const resultSource = new EventSource("/game/scores");
         resultSource.onmessage = function(event) {
@@ -72,7 +71,6 @@
             console.log("adding html: ", html);
             results.innerHTML = html;
         }
-        resultSource.onerror = () => resultSource.close();
     }
 
     function selectAnswer(idx, answer) {
