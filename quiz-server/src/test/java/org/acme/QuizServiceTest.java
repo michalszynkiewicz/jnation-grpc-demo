@@ -2,7 +2,7 @@ package org.acme;
 
 import io.quarkus.grpc.GrpcClient;
 import io.quarkus.test.junit.QuarkusTest;
-import io.smallrye.mutiny.Multi;
+import org.acme.admin.QuizStartResource;
 import org.acme.quiz.grpc.Answer;
 import org.acme.quiz.grpc.Empty;
 import org.acme.quiz.grpc.Question;
@@ -11,6 +11,7 @@ import org.acme.quiz.grpc.Result;
 import org.acme.quiz.grpc.SignUpRequest;
 import org.junit.jupiter.api.Test;
 
+import javax.inject.Inject;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -19,9 +20,11 @@ import static org.awaitility.Awaitility.await;
 
 @QuarkusTest
 public class QuizServiceTest {
-
     @GrpcClient
     Quiz quizClient;
+
+    @Inject
+    QuizStartResource start;
 
     @Test
     void shouldRespondToQuestion() {
@@ -29,10 +32,11 @@ public class QuizServiceTest {
                 .await().atMost(Duration.ofSeconds(5));
 
         AtomicReference<Question> question = new AtomicReference<>();
+
         quizClient.getQuestions(Empty.getDefaultInstance())
                 .subscribe().with(question::set);
+        start.startQuiz();
 
-        quizClient.start(Empty.getDefaultInstance()).await().atMost(Duration.ofSeconds(5));
         await().atMost(Duration.ofSeconds(5)).until(() -> question.get() != null);
 
         Result result = quizClient.respond(Answer.newBuilder()
@@ -40,6 +44,7 @@ public class QuizServiceTest {
                 .setUser("Michał")
                 .setText("5")
                 .build()).await().atMost(Duration.ofSeconds(5));
+
         assertThat(result.getStatus()).isEqualTo(Result.Status.CORRECT);
     }
 }
