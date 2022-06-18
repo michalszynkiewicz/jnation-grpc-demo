@@ -1,5 +1,4 @@
 package org.acme;
-
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import javax.annotation.PostConstruct;
@@ -44,6 +43,6 @@ public class RiddleStorage {
         riddles.add(new Riddle("Can Quarkus do gRPC?", "Yes", "No"));
         riddles.add(new Riddle("What is the major part of the Quarkus version?", "2", "0", "1", "4"));
         riddles.add(new Riddle("How many Quarkus contributors are there?", "500-1000", "1-10", "11-100", "101-500"));
-        riddles.add(new Riddle("Who joined Quarkus earlier?", "Martin", "Michał"));
+        riddles.add(new Riddle("What is the current proto syntax version?", "3", "1", "2"));
     }
 }

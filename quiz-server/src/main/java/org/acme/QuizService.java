@@ -32,8 +32,9 @@ public class QuizService implements Quiz {
 
     private final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
 
-    private final UnicastProcessor<Question> questionBroadcast = UnicastProcessor.create();
-    private final Multi<Question> questions = Multi.createBy().replaying().upTo(1).ofMulti(questionBroadcast)
+    private final UnicastProcessor<Question> questionSendOut = UnicastProcessor.create();
+    private final Multi<Question> questions = Multi.createBy().replaying()
+            .upTo(1).ofMulti(questionSendOut)
             .broadcast().toAllSubscribers();
 
     private final BroadcastProcessor<Scores> scoreBroadcast = BroadcastProcessor.create();
@@ -98,7 +99,7 @@ public class QuizService implements Quiz {
     }
 
     public void endQuiz() {
-        questionBroadcast.onNext(Question.newBuilder().setText("That's all, thanks for playing!").build());
+        questionSendOut.onNext(Question.newBuilder().setText("That's all, thanks for playing!").build());
         currentRiddle.set(null);
         broadcastResults();
     }
@@ -108,7 +109,7 @@ public class QuizService implements Quiz {
         if (riddle == null) {
             endQuiz();
         } else {
-            questionBroadcast.onNext(riddle.toQuestion());
+            questionSendOut.onNext(riddle.toQuestion());
             currentRiddle.set(riddle);
             broadcastResults();
             usersWithAnswer.clear();
