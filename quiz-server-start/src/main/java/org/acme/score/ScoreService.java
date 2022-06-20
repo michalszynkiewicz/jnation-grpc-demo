@@ -3,13 +3,9 @@ package org.acme.score;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
-import org.acme.quiz.grpc.Scores;
-import org.acme.quiz.grpc.UserScore;
 import org.acme.riddle.Riddle;
-import org.acme.riddle.RiddleService;
 
 import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -27,14 +23,19 @@ public class ScoreService {
 
     private final AtomicReference<Riddle> currentRiddle = new AtomicReference<>();
 
+    /**
+     * get a stream of user scores
+     * @return user scores stream
+     */
     public Multi<Map<String, Integer>> getScoreBroadcast() {
         return scoreBroadcast;
     }
 
-    private void broadcastResults() {
-        scoreBroadcast.onNext(pointsByUser);
-    }
-
+    /**
+     * add a user to keep score for
+     * @param name username
+     * @return true if a user was added, false if a user with the given name was already defined
+     */
     public Uni<Boolean> addUser(String name) {
         if (pointsByUser.putIfAbsent(name, 0) != null) {
             return Uni.createFrom().item(false);
@@ -43,6 +44,13 @@ public class ScoreService {
         }
     }
 
+    /**
+     *
+     * @param user username
+     * @param question the text of the question
+     * @param text the text of the answer
+     * @return if the answer was good
+     */
     public Uni<Result> addResponse(String user, String question, String text) {
         Riddle riddle = currentRiddle.get();
         Result result;
@@ -69,5 +77,9 @@ public class ScoreService {
 
     public void clearPoints() {
         pointsByUser.replaceAll((k, v) -> 0);
+    }
+
+    private void broadcastResults() {
+        scoreBroadcast.onNext(pointsByUser);
     }
 }

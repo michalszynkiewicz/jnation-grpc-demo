@@ -1,19 +1,17 @@
 package org.acme.admin;
 
+import javax.inject.Inject;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.core.Response;
 
-import org.acme.QuizGrpcService;
-
 import io.quarkus.grpc.GrpcService;
-import org.acme.riddle.Riddle;
 import org.acme.riddle.RiddleService;
 
 @Path("/admin/start")
 public class QuizStartResource {
 
-    @GrpcService
+    @Inject
     RiddleService riddleService;
 
     @GET

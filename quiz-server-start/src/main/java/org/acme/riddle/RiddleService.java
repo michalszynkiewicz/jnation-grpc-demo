@@ -52,7 +52,11 @@ public class RiddleService {
         }
     }
 
-    public Multi<Riddle> getRiddleBroadcast() {
+    /**
+     * get stream of riddles
+     * @return stream of riddles
+     */
+    public Multi<Riddle> getRiddleStream() {
         return riddles;
     }
 }

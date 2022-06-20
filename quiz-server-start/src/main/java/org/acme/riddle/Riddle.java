@@ -1,7 +1,5 @@
 package org.acme.riddle;
 
-import org.acme.quiz.grpc.Question;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -20,10 +18,4 @@ public class Riddle {
         options.sort(String::compareTo);
     }
 
-    public Question toQuestion() {
-        return Question.newBuilder()
-                .setText(text)
-                .addAllAnswers(options)
-                .build();
-    }
 }
