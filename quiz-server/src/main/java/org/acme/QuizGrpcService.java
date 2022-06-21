@@ -18,8 +18,7 @@ import org.acme.score.ScoreService;
 
 import javax.inject.Inject;
 
-@GrpcService
-public class QuizGrpcService implements Quiz {
+public class QuizGrpcService  {
 
     @Inject
     RiddleService riddleService;
@@ -27,61 +26,4 @@ public class QuizGrpcService implements Quiz {
     @Inject
     ScoreService scoreService;
 
-
-    @Override
-    public Multi<Question> getQuestions(Empty request) {
-        return riddleService.getRiddleStream()
-                .onItem().transform(this::riddleToQuestion);
-    }
-
-    @Override
-    public Multi<Scores> watchScore(Empty request) {
-        return scoreService.getScoreBroadcast()
-                .onItem().transform(pointsByUser -> {
-                    Scores.Builder scores = Scores.newBuilder();
-                    pointsByUser
-                            .forEach((user, points) -> scores.addResults(UserScore.newBuilder().setUser(user).setPoints(points).build()));
-                    return scores.build();
-                });
-    }
-
-    public Question riddleToQuestion(Riddle riddle) {
-        return Question.newBuilder()
-                .setText(riddle.text)
-                .addAllAnswers(riddle.options)
-                .build();
-    }
-
-
-    @Override
-    public Uni<Result> respond(Answer request) {
-        return scoreService.addResponse(request.getUser(), request.getQuestion(), request.getText())
-                .onItem().transform(
-                        status ->
-                                Result.newBuilder().setStatus(toGrpcStatus(status)).build()
-                );
-    }
-
-    @Override
-    public Uni<SignUpResponse> signUp(SignUpRequest request) {
-        return scoreService.addUser(request.getName())
-                .onItem().transform(
-                        result -> result ? SignUpResponse.Status.OKAY : SignUpResponse.Status.NAME_TAKEN
-                ).onItem().transform(SignUpResponse.newBuilder()::setStatus)
-                .onItem().transform(SignUpResponse.Builder::build);
-    }
-
-    private Result.Status toGrpcStatus(org.acme.score.Result status) {
-        switch (status) {
-            case CORRECT:
-                return Result.Status.CORRECT;
-            case WRONG:
-                return Result.Status.WRONG;
-            case DUPLICATE_ANSWER:
-                return Result.Status.DUPLICATE_ANSWER;
-            case TIMEOUT:
-                return Result.Status.TIMEOUT;
-        }
-        return null;
-    }
 }
